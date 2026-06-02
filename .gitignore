@@ -165,6 +165,8 @@ wandb/
 # Data folders
 data/
 outputs/
+vla_wa/data/
+vla_wa/models/
 
 # Translations
 *.mo

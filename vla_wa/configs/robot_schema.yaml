@@ -1,0 +1,109 @@
+schema_version: miniwalle.wa_schema.v1
+source_refs:
+  - /data/kirby/miniwalle-robotics/motion_dataset/configs/joints.yaml
+  - /data/kirby/miniwalle-robotics/miniwalle/real_robot/payload.py
+  - /data/kirby/walle-omni-demo/skills/motion/data/neutral_pose.json
+
+unit: degree
+default_state_profile: upper_body_v1
+default_action_profile: upper_body_v1
+action_type: target_state
+
+notes:
+  - chunk_size and n_action_steps are policy/training settings, not schema constants.
+  - upper_body_v1 is the Stage-1 expressive-motion profile.
+  - body_chassis_v1 is reserved for future base-motion and navigation data.
+  - hardware_default comes from joints.yaml; omni_neutral comes from walle-omni-demo neutral_pose.json.
+
+profiles:
+  upper_body_v1:
+    state_fields:
+      - left_eyebrow
+      - right_eyebrow
+      - left_eye
+      - right_eye
+      - head_pitch
+      - head_yaw
+      - neck
+      - left_shoulder_pitch
+      - right_shoulder_pitch
+      - left_shoulder_yaw
+      - right_shoulder_yaw
+      - left_arm
+      - right_arm
+    action_fields:
+      - left_eyebrow
+      - right_eyebrow
+      - left_eye
+      - right_eye
+      - head_pitch
+      - head_yaw
+      - neck
+      - left_shoulder_pitch
+      - right_shoulder_pitch
+      - left_shoulder_yaw
+      - right_shoulder_yaw
+      - left_arm
+      - right_arm
+
+  body_chassis_v1:
+    extends: upper_body_v1
+    additional_state_fields:
+      - chassis_linear_velocity
+      - chassis_angular_velocity
+    additional_action_fields:
+      - chassis_linear_velocity
+      - chassis_angular_velocity
+
+joints:
+  left_eyebrow: {motor_type: eyebrow, side: left, default: 10, min: 0, max: 20, max_speed: 120}
+  right_eyebrow: {motor_type: eyebrow, side: right, default: 10, min: 0, max: 20, max_speed: 120}
+  left_eye: {motor_type: eye, side: left, default: 7, min: 0, max: 15, max_speed: 120}
+  right_eye: {motor_type: eye, side: right, default: 7, min: 0, max: 15, max_speed: 120}
+  head_pitch: {motor_type: head, direction: pitch, default: 0, min: -25, max: 28, max_speed: 90}
+  head_yaw: {motor_type: head, direction: yaw, default: 0, min: -80, max: 80, max_speed: 100}
+  neck: {motor_type: neck, default: 60, min: 0, max: 120, max_speed: 100}
+  left_shoulder_pitch: {motor_type: shoulder, side: left, direction: pitch, default: 0, min: 0, max: 90, max_speed: 100}
+  right_shoulder_pitch: {motor_type: shoulder, side: right, direction: pitch, default: 0, min: 0, max: 90, max_speed: 100}
+  left_shoulder_yaw: {motor_type: shoulder, side: left, direction: yaw, default: -90, min: -90, max: 0, max_speed: 100}
+  right_shoulder_yaw: {motor_type: shoulder, side: right, direction: yaw, default: -90, min: -90, max: 0, max_speed: 100}
+  left_arm: {motor_type: arm, side: left, default: 0, min: -28, max: 28, max_speed: 100}
+  right_arm: {motor_type: arm, side: right, default: 0, min: -28, max: 28, max_speed: 100}
+
+chassis:
+  chassis_linear_velocity: {default: 0, min: -1000, max: 1000, unit: mm_per_s}
+  chassis_angular_velocity: {default: 0, min: -60, max: 60, unit: deg_per_s}
+
+pose_presets:
+  hardware_default:
+    left_eyebrow: 10
+    right_eyebrow: 10
+    left_eye: 7
+    right_eye: 7
+    head_pitch: 0
+    head_yaw: 0
+    neck: 60
+    left_shoulder_pitch: 0
+    right_shoulder_pitch: 0
+    left_shoulder_yaw: -90
+    right_shoulder_yaw: -90
+    left_arm: 0
+    right_arm: 0
+    chassis_linear_velocity: 0
+    chassis_angular_velocity: 0
+  omni_neutral:
+    left_eyebrow: 10
+    right_eyebrow: 10
+    left_eye: 7
+    right_eye: 7
+    head_pitch: 5
+    head_yaw: 0
+    neck: 50
+    left_shoulder_pitch: 10
+    right_shoulder_pitch: 10
+    left_shoulder_yaw: -60
+    right_shoulder_yaw: -60
+    left_arm: 0
+    right_arm: 0
+    chassis_linear_velocity: 0
+    chassis_angular_velocity: 0
