@@ -12,6 +12,7 @@ import argparse
 import json
 import math
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -31,7 +32,6 @@ os.environ.setdefault("HF_HUB_OFFLINE", "1")
 from lerobot.common.train_utils import (  # noqa: E402
     get_step_checkpoint_dir,
     save_training_state,
-    update_last_checkpoint,
 )
 from lerobot.configs import FeatureType, PreTrainedConfig  # noqa: E402
 from lerobot.datasets.dataset_metadata import LeRobotDatasetMetadata  # noqa: E402
@@ -62,6 +62,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--steps", type=int, default=20_000)
     parser.add_argument("--save-freq", type=int, default=5_000)
+    parser.add_argument(
+        "--save-steps",
+        default="",
+        help="Comma-separated extra checkpoint steps to save, e.g. 10,100,1000.",
+    )
     parser.add_argument("--log-freq", type=int, default=20)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=1000)
@@ -163,6 +168,7 @@ def main() -> None:
         output_dir=output_dir,
         steps=args.steps,
         save_freq=args.save_freq,
+        save_steps=parse_save_steps(args.save_steps),
         log_freq=args.log_freq,
         grad_clip_norm=grad_clip_norm,
     )
@@ -203,6 +209,7 @@ def train(
     output_dir: Path,
     steps: int,
     save_freq: int,
+    save_steps: set[int],
     log_freq: int,
     grad_clip_norm: float,
 ) -> None:
@@ -232,7 +239,9 @@ def train(
                 if info:
                     print(f"  info={json.dumps(sanitize_info(info), ensure_ascii=False)}")
 
-            if save_freq > 0 and step % save_freq == 0:
+            is_save_freq_step = save_freq > 0 and step % save_freq == 0
+            is_explicit_save_step = step in save_steps
+            if is_save_freq_step or is_explicit_save_step:
                 save_artifacts(
                     output_dir=output_dir,
                     step=step,
@@ -284,6 +293,50 @@ def make_scheduler(
     return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
 
+def parse_save_steps(value: str) -> set[int]:
+    if not value.strip():
+        return set()
+    save_steps: set[int] = set()
+    for raw_item in value.split(","):
+        item = raw_item.strip()
+        if not item:
+            continue
+        step = int(item)
+        if step <= 0:
+            raise ValueError(f"--save-steps values must be positive, got {step}")
+        save_steps.add(step)
+    return save_steps
+
+
+def update_last_checkpoint_compatible(checkpoint_dir: Path) -> None:
+    """Update checkpoints/last, using a directory copy when symlinks are blocked.
+
+    Windows often requires elevated privileges for directory symlinks. LeRobot's
+    checkpoint loader can read a real directory at checkpoints/last too, so local
+    training falls back to copying the just-saved checkpoint.
+    """
+
+    last_checkpoint_dir = checkpoint_dir.parent / "last"
+    if last_checkpoint_dir.exists() or last_checkpoint_dir.is_symlink():
+        if last_checkpoint_dir.is_symlink() or last_checkpoint_dir.is_file():
+            last_checkpoint_dir.unlink()
+        else:
+            shutil.rmtree(last_checkpoint_dir)
+
+    relative_target = checkpoint_dir.relative_to(checkpoint_dir.parent)
+    try:
+        last_checkpoint_dir.symlink_to(relative_target)
+    except OSError as exc:
+        shutil.copytree(checkpoint_dir, last_checkpoint_dir)
+        marker = {
+            "target": str(relative_target),
+            "fallback": "copytree",
+            "reason": f"{type(exc).__name__}: {exc}",
+        }
+        with (last_checkpoint_dir / "last_checkpoint_fallback.json").open("w", encoding="utf-8") as f:
+            json.dump(marker, f, ensure_ascii=False, indent=2)
+
+
 def save_artifacts(
     *,
     output_dir: Path,
@@ -304,7 +357,7 @@ def save_artifacts(
         preprocessor.save_pretrained(pretrained_dir)
         postprocessor.save_pretrained(pretrained_dir)
         save_training_state(checkpoint_dir, step, optimizer, scheduler)
-        update_last_checkpoint(checkpoint_dir)
+        update_last_checkpoint_compatible(checkpoint_dir)
         print(f"saved_checkpoint={checkpoint_dir}")
     else:
         pretrained_dir = output_dir / PRETRAINED_MODEL_DIR

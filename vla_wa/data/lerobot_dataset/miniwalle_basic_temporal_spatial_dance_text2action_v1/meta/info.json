@@ -1,0 +1,108 @@
+{
+    "codebase_version": "v3.0",
+    "fps": 10,
+    "features": {
+        "observation.state": {
+            "dtype": "float32",
+            "shape": [
+                13
+            ],
+            "names": [
+                "left_eyebrow",
+                "right_eyebrow",
+                "left_eye",
+                "right_eye",
+                "head_pitch",
+                "head_yaw",
+                "neck",
+                "left_shoulder_pitch",
+                "right_shoulder_pitch",
+                "left_shoulder_yaw",
+                "right_shoulder_yaw",
+                "left_arm",
+                "right_arm"
+            ]
+        },
+        "action": {
+            "dtype": "float32",
+            "shape": [
+                13
+            ],
+            "names": [
+                "left_eyebrow",
+                "right_eyebrow",
+                "left_eye",
+                "right_eye",
+                "head_pitch",
+                "head_yaw",
+                "neck",
+                "left_shoulder_pitch",
+                "right_shoulder_pitch",
+                "left_shoulder_yaw",
+                "right_shoulder_yaw",
+                "left_arm",
+                "right_arm"
+            ]
+        },
+        "observation.images.context": {
+            "dtype": "image",
+            "shape": [
+                64,
+                64,
+                3
+            ],
+            "names": [
+                "height",
+                "width",
+                "channel"
+            ]
+        },
+        "timestamp": {
+            "dtype": "float32",
+            "shape": [
+                1
+            ],
+            "names": null
+        },
+        "frame_index": {
+            "dtype": "int64",
+            "shape": [
+                1
+            ],
+            "names": null
+        },
+        "episode_index": {
+            "dtype": "int64",
+            "shape": [
+                1
+            ],
+            "names": null
+        },
+        "index": {
+            "dtype": "int64",
+            "shape": [
+                1
+            ],
+            "names": null
+        },
+        "task_index": {
+            "dtype": "int64",
+            "shape": [
+                1
+            ],
+            "names": null
+        }
+    },
+    "total_episodes": 1478,
+    "total_frames": 106850,
+    "total_tasks": 238,
+    "chunks_size": 1000,
+    "data_files_size_in_mb": 100,
+    "video_files_size_in_mb": 200,
+    "data_path": "data/chunk-{chunk_index:03d}/file-{file_index:03d}.parquet",
+    "video_path": null,
+    "robot_type": "miniwalle",
+    "splits": {
+        "train": "0:1478"
+    }
+}

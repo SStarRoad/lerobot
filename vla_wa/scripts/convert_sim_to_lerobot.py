@@ -81,6 +81,13 @@ def parse_args() -> argparse.Namespace:
         help="Task text template. Available fields: motion_id, instruction, style, intensity, tempo.",
     )
     parser.add_argument(
+        "--style-task-overrides",
+        nargs="*",
+        default=[],
+        metavar="STYLE=TASK",
+        help="Override task text for motions with matching style, e.g. normalized_pose_video=跳舞.",
+    )
+    parser.add_argument(
         "--dummy-image-key",
         default=None,
         help=(
@@ -116,6 +123,7 @@ def main() -> None:
     if not motions:
         raise ValueError(f"no motion JSON files found under {args.input}")
 
+    style_task_overrides = parse_style_task_overrides(args.style_task_overrides)
     fps = args.fps or infer_dataset_fps(motions)
     schema = MiniWalleSchema(state_profile=args.state_profile, action_profile=args.action_profile)
     features = schema.lerobot_features()
@@ -129,7 +137,7 @@ def main() -> None:
     print(f"Output: {args.output}")
     if args.dry_run:
         for motion in motions:
-            print_episode_summary(motion, args.task_template)
+            print_episode_summary(motion, args.task_template, style_task_overrides)
         return
 
     prepare_output_dir(args.output, overwrite=args.overwrite)
@@ -149,6 +157,7 @@ def main() -> None:
                 motion,
                 schema=schema,
                 task_template=args.task_template,
+                style_task_overrides=style_task_overrides,
                 action_source=args.action_source,
                 dummy_image_key=args.dummy_image_key,
                 dummy_image_size=tuple(args.dummy_image_size),
@@ -176,11 +185,27 @@ def discover_input_files(paths: Path | list[Path]) -> list[Path]:
                 raise FileNotFoundError(path)
             candidates = sorted(path.glob("*.json"))
         for candidate in candidates:
+            if candidate.name.endswith("_summary.json"):
+                continue
             resolved = candidate.resolve()
             if resolved not in seen:
                 files.append(candidate)
                 seen.add(resolved)
     return files
+
+
+def parse_style_task_overrides(values: list[str]) -> dict[str, str]:
+    overrides: dict[str, str] = {}
+    for value in values:
+        if "=" not in value:
+            raise ValueError(f"--style-task-overrides entries must be STYLE=TASK, got: {value}")
+        style, task = value.split("=", 1)
+        style = style.strip()
+        task = task.strip()
+        if not style or not task:
+            raise ValueError(f"--style-task-overrides entries must include non-empty STYLE and TASK: {value}")
+        overrides[style] = task
+    return overrides
 
 
 def load_motion(path: Path) -> dict[str, Any]:
@@ -227,12 +252,13 @@ def add_motion_episode(
     *,
     schema: MiniWalleSchema,
     task_template: str,
+    style_task_overrides: dict[str, str],
     action_source: ActionSource,
     dummy_image_key: str | None = None,
     dummy_image_size: tuple[int, int] = (64, 64),
 ) -> None:
     frames = motion["frames"]
-    task = format_task(motion, task_template)
+    task = format_task(motion, task_template, style_task_overrides=style_task_overrides)
     dummy_image = make_dummy_image(dummy_image_size) if dummy_image_key else None
     for index, frame in enumerate(frames):
         state = schema.vectorize_state(frame["joints"])
@@ -276,23 +302,35 @@ def select_action_frame(frames: list[dict[str, Any]], index: int, action_source:
     raise ValueError(f"unsupported action source: {action_source}")
 
 
-def format_task(motion: dict[str, Any], template: str) -> str:
+def format_task(
+    motion: dict[str, Any],
+    template: str,
+    *,
+    style_task_overrides: dict[str, str] | None = None,
+) -> str:
+    style = motion.get("style") or ""
+    if style_task_overrides and style in style_task_overrides:
+        return style_task_overrides[style]
     values = {
         "motion_id": motion.get("motion_id") or Path(motion.get("_source_path", "motion")).stem,
         "instruction": motion.get("instruction") or motion.get("motion_id") or "MiniWalle motion",
-        "style": motion.get("style") or "",
+        "style": style,
         "intensity": motion.get("intensity") if motion.get("intensity") is not None else "",
         "tempo": motion.get("tempo") if motion.get("tempo") is not None else "",
     }
     return template.format(**values).strip()
 
 
-def print_episode_summary(motion: dict[str, Any], task_template: str) -> None:
+def print_episode_summary(
+    motion: dict[str, Any],
+    task_template: str,
+    style_task_overrides: dict[str, str] | None = None,
+) -> None:
     source = motion.get("_source_path", "<memory>")
     frames = motion["frames"]
     print(
         f"- {source}: motion_id={motion.get('motion_id')}, fps={motion.get('fps')}, "
-        f"frames={len(frames)}, task={format_task(motion, task_template)!r}"
+        f"frames={len(frames)}, task={format_task(motion, task_template, style_task_overrides=style_task_overrides)!r}"
     )
 
 
