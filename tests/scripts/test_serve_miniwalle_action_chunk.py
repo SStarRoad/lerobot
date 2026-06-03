@@ -17,6 +17,8 @@ from vla_wa.scripts.serve_miniwalle_action_chunk import (
     OBS_STATE,
     MiniWalleActionChunkService,
     build_action_chunk_response,
+    build_motion_from_action_response,
+    build_motion_payload,
     build_server,
     black_context_image,
     current_joints_to_state,
@@ -115,6 +117,34 @@ class MiniWalleActionChunkServiceTest(unittest.TestCase):
             },
         )
 
+    def test_build_motion_and_mqtt_payload_from_action_response(self) -> None:
+        response = build_action_chunk_response(
+            checkpoint=Path("outputs/train/checkpoints/050000/pretrained_model"),
+            instruction="jump",
+            fps=10,
+            action_names=ACTION_NAMES,
+            action_chunk=[[[0 for _ in ACTION_NAMES], [30 for _ in ACTION_NAMES]]],
+        )
+        current_joints = {name: 0 for name in ACTION_NAMES}
+
+        motion = build_motion_from_action_response(
+            response,
+            current_joints=current_joints,
+            filter_alpha=0.35,
+            use_filter=True,
+            motion_id="unit_motion",
+        )
+        mqtt_payload = build_motion_payload(motion, source="unit_test")
+
+        self.assertEqual(motion["motion_id"], "unit_motion")
+        self.assertEqual(len(motion["frames"]), 2)
+        self.assertEqual(motion["frames"][0]["source"]["filter"]["type"], "ema_speed_limit")
+        self.assertEqual(mqtt_payload["type"], "multimodal_action")
+        self.assertEqual(mqtt_payload["command"], "motor_control")
+        self.assertEqual(mqtt_payload["meta"]["source"], "unit_test")
+        self.assertEqual(mqtt_payload["meta"]["motion_id"], "unit_motion")
+        self.assertTrue(mqtt_payload["payload"])
+
     def test_black_context_image_is_float_tensor_when_torch_is_available(self) -> None:
         try:
             import torch
@@ -158,12 +188,15 @@ class MiniWalleActionChunkServiceTest(unittest.TestCase):
                 current_joints["head_yaw"] = 4.0
                 response = post_json(
                     f"{base_url}/predict",
-                    {"instruction": "jump", "current_joints": current_joints},
+                    {"instruction": "jump", "current_joints": current_joints, "return_mqtt": "true"},
                 )
                 self.assertTrue(response["ok"])
                 self.assertEqual(response["instruction"], "jump")
                 self.assertEqual(response["shape"], [2, len(ACTION_NAMES)])
                 self.assertEqual(response["actions"][0][ACTION_NAMES.index("head_yaw")], 4.0)
+                self.assertIn("frames", response)
+                self.assertIn("mqtt_payload", response)
+                self.assertEqual(response["mqtt_payload"]["command"], "motor_control")
             finally:
                 server.shutdown()
                 server.server_close()
@@ -173,7 +206,11 @@ class FakePredictor:
     def predict_action_chunk(self, frame: dict[str, object]) -> list[list[float]]:
         assert frame["task"] == "jump"
         assert OBS_CONTEXT_IMAGE in frame
-        state = list(frame[OBS_STATE])
+        raw_state = frame[OBS_STATE]
+        if hasattr(raw_state, "detach"):
+            state = raw_state.detach().cpu()[0].tolist()
+        else:
+            state = list(raw_state)
         return [state, [value + 1.0 for value in state]]
 
 
