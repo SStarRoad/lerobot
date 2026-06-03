@@ -310,7 +310,9 @@ def black_context_image(shape: tuple[int, int, int]) -> Any:
     except ImportError:
         channels, height, width = shape
         return [[[0 for _ in range(width)] for _ in range(height)] for _ in range(channels)]
-    return torch.zeros(shape, dtype=torch.uint8)
+    # Keep the placeholder image in floating point so downstream resize/upsample
+    # processors can use bilinear interpolation on CPU/CUDA.
+    return torch.zeros(shape, dtype=torch.float32)
 
 
 def load_robot_schema_fields(path: Path, profile: str = DEFAULT_PROFILE) -> dict[str, list[str]]:

@@ -18,6 +18,7 @@ from vla_wa.scripts.serve_miniwalle_action_chunk import (
     MiniWalleActionChunkService,
     build_action_chunk_response,
     build_server,
+    black_context_image,
     current_joints_to_state,
     discover_checkpoint_candidates,
     load_robot_schema_fields,
@@ -113,6 +114,17 @@ class MiniWalleActionChunkServiceTest(unittest.TestCase):
                 "actions": [[1.0, 2.0], [3.0, 4.0]],
             },
         )
+
+    def test_black_context_image_is_float_tensor_when_torch_is_available(self) -> None:
+        try:
+            import torch
+        except ImportError:
+            self.skipTest("torch is not installed")
+
+        image = black_context_image((3, 8, 8))
+
+        self.assertIsInstance(image, torch.Tensor)
+        self.assertEqual(image.dtype, torch.float32)
 
     def test_http_smoke_with_fake_predictor(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
