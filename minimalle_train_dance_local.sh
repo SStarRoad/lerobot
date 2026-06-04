@@ -14,12 +14,16 @@ STEPS="${STEPS:-20000}"
 SAVE_FREQ="${SAVE_FREQ:-5000}"
 SAVE_STEPS="${SAVE_STEPS:-10,100,1000,5000,10000,15000,20000}"
 BATCH_SIZE="${BATCH_SIZE:-4}"
+CHUNK_SIZE="${CHUNK_SIZE:-}"
+N_ACTION_STEPS="${N_ACTION_STEPS:-}"
+GPU="${GPU:-}"
 DEVICE="${DEVICE:-cuda}"
 LOG_FREQ="${LOG_FREQ:-20}"
 NUM_WORKERS="${NUM_WORKERS:-4}"
 SEED="${SEED:-1000}"
 OVERWRITE="${OVERWRITE:-1}"
 DRY_RUN="${DRY_RUN:-0}"
+INSTRUCTION_ALIGNED_SAMPLING="${INSTRUCTION_ALIGNED_SAMPLING:-0}"
 
 PYTHON="${PYTHON:-.venv/Scripts/python.exe}"
 
@@ -39,6 +43,9 @@ export HF_HOME="${HF_HOME:-${ROOT_DIR}/.cache/huggingface}"
 export HF_DATASETS_CACHE="${HF_DATASETS_CACHE:-${ROOT_DIR}/.cache/hf_datasets}"
 export TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE:-1}"
 export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
+if [[ -n "${GPU}" ]]; then
+  export CUDA_VISIBLE_DEVICES="${GPU}"
+fi
 
 args=(
   -B
@@ -58,11 +65,20 @@ args=(
   --seed "${SEED}"
 )
 
+if [[ -n "${CHUNK_SIZE}" ]]; then
+  args+=(--chunk-size "${CHUNK_SIZE}")
+fi
+if [[ -n "${N_ACTION_STEPS}" ]]; then
+  args+=(--n-action-steps "${N_ACTION_STEPS}")
+fi
 if [[ "${DRY_RUN}" == "1" ]]; then
   args+=(--dry-run)
 fi
 if [[ "${OVERWRITE}" == "1" ]]; then
   args+=(--overwrite)
+fi
+if [[ "${INSTRUCTION_ALIGNED_SAMPLING}" == "1" ]]; then
+  args+=(--instruction-aligned-sampling)
 fi
 
 echo "MiniWalle SmolVLA training"
@@ -71,9 +87,19 @@ echo "  policy:     ${POLICY_PATH}"
 echo "  vlm:        ${VLM_PATH}"
 echo "  output:     ${OUTPUT_DIR}"
 echo "  device:     ${DEVICE}"
+if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
+  echo "  cuda gpus:  ${CUDA_VISIBLE_DEVICES}"
+fi
 echo "  steps:      ${STEPS}"
 echo "  save steps: ${SAVE_STEPS}"
 echo "  batch size: ${BATCH_SIZE}"
+if [[ -n "${CHUNK_SIZE}" ]]; then
+  echo "  chunk size: ${CHUNK_SIZE}"
+fi
+if [[ -n "${N_ACTION_STEPS}" ]]; then
+  echo "  action steps: ${N_ACTION_STEPS}"
+fi
+echo "  aligned sampler: ${INSTRUCTION_ALIGNED_SAMPLING}"
 echo
 
 "${PYTHON}" "${args[@]}" "$@"

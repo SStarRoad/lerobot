@@ -37,6 +37,7 @@ from lerobot.configs import FeatureType, PreTrainedConfig  # noqa: E402
 from lerobot.datasets.dataset_metadata import LeRobotDatasetMetadata  # noqa: E402
 from lerobot.datasets.factory import resolve_delta_timestamps  # noqa: E402
 from lerobot.datasets.lerobot_dataset import LeRobotDataset  # noqa: E402
+from lerobot.datasets.sampler import InstructionAlignedSampler  # noqa: E402
 from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy  # noqa: E402
 from lerobot.policies.smolvla.processor_smolvla import make_smolvla_pre_post_processors  # noqa: E402
 from lerobot.utils.constants import ACTION, CHECKPOINTS_DIR, PRETRAINED_MODEL_DIR  # noqa: E402
@@ -63,6 +64,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--steps", type=int, default=20_000)
     parser.add_argument("--save-freq", type=int, default=5_000)
     parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=None,
+        help="Number of future action steps predicted per model invocation. Defaults to policy config.",
+    )
+    parser.add_argument(
+        "--n-action-steps",
+        type=int,
+        default=None,
+        help="Number of predicted action steps used for execution. Defaults to --chunk-size or policy config.",
+    )
+    parser.add_argument(
         "--save-steps",
         default="",
         help="Comma-separated extra checkpoint steps to save, e.g. 10,100,1000.",
@@ -74,6 +87,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weight-decay", type=float, default=None)
     parser.add_argument("--grad-clip-norm", type=float, default=None)
     parser.add_argument("--strict", action="store_true", help="Strictly load pretrained policy weights.")
+    parser.add_argument(
+        "--instruction-aligned-sampling",
+        action="store_true",
+        help=(
+            "For episode_type=instruction_aligned_episode, sample obs starts only from "
+            "allowed_obs_start_frame_ranges; regular episodes keep default frame-level sampling."
+        ),
+    )
     parser.add_argument("--dry-run", action="store_true", help="Build everything and run one no-update batch.")
     parser.add_argument(
         "--print-trainable",
@@ -127,10 +148,17 @@ def main() -> None:
         delta_timestamps=delta_timestamps,
         return_uint8=True,
     )
+    sampler = None
+    shuffle = True
+    if args.instruction_aligned_sampling:
+        sampler = InstructionAlignedSampler(dataset.meta.episodes, dataset_root=dataset_root, shuffle=True)
+        shuffle = False
+        print(f"instruction_aligned_sampler={json.dumps(sampler.summary(), ensure_ascii=False)}")
     dataloader = DataLoader(
         dataset,
         batch_size=args.batch_size,
-        shuffle=True,
+        shuffle=shuffle,
+        sampler=sampler,
         num_workers=args.num_workers,
         pin_memory=device.type == "cuda",
         drop_last=False,
@@ -191,6 +219,20 @@ def build_config(
     cfg.load_vlm_weights = True
     cfg.push_to_hub = False
     cfg.use_amp = False
+    if args.chunk_size is not None:
+        if args.chunk_size <= 0:
+            raise ValueError(f"--chunk-size must be positive, got {args.chunk_size}")
+        cfg.chunk_size = args.chunk_size
+    if args.n_action_steps is not None:
+        if args.n_action_steps <= 0:
+            raise ValueError(f"--n-action-steps must be positive, got {args.n_action_steps}")
+        cfg.n_action_steps = args.n_action_steps
+    elif args.chunk_size is not None:
+        cfg.n_action_steps = args.chunk_size
+    if cfg.n_action_steps > cfg.chunk_size:
+        raise ValueError(
+            f"n_action_steps ({cfg.n_action_steps}) cannot exceed chunk_size ({cfg.chunk_size})"
+        )
 
     features = dataset_to_policy_features(meta.features)
     cfg.output_features = {key: ft for key, ft in features.items() if ft.type is FeatureType.ACTION}
@@ -414,6 +456,8 @@ def save_run_config(
         "policy": {
             "type": cfg.type,
             "vlm_model_name": cfg.vlm_model_name,
+            "chunk_size": cfg.chunk_size,
+            "n_action_steps": cfg.n_action_steps,
             "freeze_vision_encoder": cfg.freeze_vision_encoder,
             "train_expert_only": cfg.train_expert_only,
             "train_state_proj": cfg.train_state_proj,

@@ -1,0 +1,51 @@
+version: 1
+name: miniwalle_fixed_eval_instructions
+description: Fixed MiniWalle SmolVLA evaluation instructions for step-to-step and experiment-to-experiment comparison.
+created_at: "2026-06-04"
+source_datasets:
+  experiment2_v1_2:
+    repo_id: local/miniwalle_basic_temporal_spatial_dance_text2action_v1_plus_v1_2
+    root: vla_wa/data/lerobot_dataset/miniwalle_basic_temporal_spatial_dance_text2action_v1_plus_v1_2
+  experiment3_aligned_v2:
+    repo_id: local/miniwalle_dance_atomic_plus_instruction_aligned_v2
+    root: vla_wa/data/lerobot_dataset/miniwalle_dance_atomic_plus_instruction_aligned_v2
+notes:
+  - in_distribution_shared means the instruction exists in both source datasets' meta/tasks.parquet.
+  - out_of_distribution_combo means the instruction is intentionally used as a held-out compositional generalization prompt.
+instructions:
+  - id: nod_head
+    instruction: 点头
+    split: in_distribution_shared
+    category: atomic
+    expected_behavior: nod once or produce a clear nodding motion.
+  - id: wave_left
+    instruction: 左手挥手
+    split: in_distribution_shared
+    category: atomic
+    expected_behavior: raise and wave the left hand clearly.
+  - id: raise_arms_while_nod
+    instruction: 一边抬起双手，一边点头一下
+    split: in_distribution_shared
+    category: spatial_combo
+    expected_behavior: raise both hands while nodding once.
+  - id: wave_right_then_nod
+    instruction: 第一步挥右手一下，第二步点头一下
+    split: in_distribution_shared
+    category: temporal_combo
+    expected_behavior: wave the right hand once, then nod once.
+  - id: nod_3x_then_wave_2x
+    instruction: 点头三次后挥手两次
+    split: out_of_distribution_combo
+    category: temporal_combo
+    expected_behavior: nod three times, then wave twice.
+optional_shared_combos:
+  - id: wave_left_2x_while_shake_head
+    instruction: 挥左手两下的时候摇头一下
+    split: in_distribution_shared
+    category: spatial_combo
+    expected_behavior: wave the left hand twice while shaking the head once.
+  - id: shake_head_while_raise_arms
+    instruction: 摇头一下，同时抬起双手
+    split: in_distribution_shared
+    category: spatial_combo
+    expected_behavior: shake the head once while raising both hands.

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
+import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -150,8 +151,10 @@ def main() -> None:
         use_videos=False,
     )
 
+    aligned_entries: list[dict[str, Any]] = []
     try:
         for motion in motions:
+            episode_index = dataset.meta.total_episodes
             add_motion_episode(
                 dataset,
                 motion,
@@ -163,12 +166,22 @@ def main() -> None:
                 dummy_image_size=tuple(args.dummy_image_size),
             )
             dataset.save_episode()
+            aligned_entry = build_aligned_sampling_entry(
+                motion,
+                episode_index=episode_index,
+                task=format_task(motion, args.task_template, style_task_overrides=style_task_overrides),
+            )
+            if aligned_entry is not None:
+                aligned_entries.append(aligned_entry)
         dataset.finalize()
+        write_aligned_sampling_metadata(args.output, aligned_entries)
     except Exception:
         dataset.clear_episode_buffer(delete_images=True)
         raise
 
     print(f"Wrote {dataset.meta.total_episodes} episode(s), {dataset.meta.total_frames} frame(s).")
+    if aligned_entries:
+        print(f"Wrote aligned sampling metadata for {len(aligned_entries)} episode(s).")
 
 
 def discover_input_files(paths: Path | list[Path]) -> list[Path]:
@@ -319,6 +332,86 @@ def format_task(
         "tempo": motion.get("tempo") if motion.get("tempo") is not None else "",
     }
     return template.format(**values).strip()
+
+
+def build_aligned_sampling_entry(motion: dict[str, Any], *, episode_index: int, task: str) -> dict[str, Any] | None:
+    meta = motion.get("meta")
+    if not isinstance(meta, dict) or meta.get("episode_type") != "instruction_aligned_episode":
+        return None
+    alignment = meta.get("alignment")
+    if not isinstance(alignment, dict):
+        raise ValueError(f"{motion.get('_source_path', '<memory>')} is missing meta.alignment")
+    ranges = normalize_frame_ranges(alignment.get("allowed_obs_start_frame_ranges"))
+    if not ranges:
+        raise ValueError(f"{motion.get('_source_path', '<memory>')} has no allowed obs start ranges")
+    return {
+        "episode_index": int(episode_index),
+        "motion_id": motion.get("motion_id") or Path(motion.get("_source_path", "motion")).stem,
+        "task": task,
+        "episode_type": "instruction_aligned_episode",
+        "motion_start_frame": int(alignment.get("motion_start_frame", -1)),
+        "motion_end_frame": int(alignment.get("motion_end_frame", -1)),
+        "allowed_obs_start_frame_ranges": ranges,
+        "semantic_index": int(alignment.get("semantic_index", -1)),
+        "paraphrase_index": int(alignment.get("paraphrase_index", -1)),
+    }
+
+
+def normalize_frame_ranges(value: Any) -> list[list[int]]:
+    if not isinstance(value, list):
+        return []
+    ranges: list[list[int]] = []
+    for item in value:
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            continue
+        start, end = int(item[0]), int(item[1])
+        if start > end:
+            start, end = end, start
+        ranges.append([start, end])
+    return ranges
+
+
+def write_aligned_sampling_metadata(output_root: Path, entries: list[dict[str, Any]]) -> None:
+    meta_dir = output_root / "meta"
+    meta_dir.mkdir(parents=True, exist_ok=True)
+    sidecar_path = meta_dir / "aligned_sampling.json"
+    payload = {
+        "version": "v1",
+        "description": "Valid observation start frames for instruction_aligned_episode training samples.",
+        "episodes": entries,
+    }
+    sidecar_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    patch_episode_metadata_columns(output_root, entries)
+
+
+def patch_episode_metadata_columns(output_root: Path, entries: list[dict[str, Any]]) -> None:
+    episodes_dir = output_root / "meta" / "episodes"
+    paths = sorted(episodes_dir.glob("*/*.parquet"))
+    if not paths:
+        return
+    by_episode = {int(entry["episode_index"]): entry for entry in entries}
+    for path in paths:
+        df = pd.read_parquet(path)
+        df["episode_type"] = ""
+        df["alignment_motion_start_frame"] = -1
+        df["alignment_motion_end_frame"] = -1
+        df["alignment_allowed_obs_start_frame_ranges_json"] = "[]"
+        df["alignment_semantic_index"] = -1
+        df["alignment_paraphrase_index"] = -1
+        for row_index, episode_index in df["episode_index"].items():
+            entry = by_episode.get(int(episode_index))
+            if entry is None:
+                continue
+            df.at[row_index, "episode_type"] = entry["episode_type"]
+            df.at[row_index, "alignment_motion_start_frame"] = entry["motion_start_frame"]
+            df.at[row_index, "alignment_motion_end_frame"] = entry["motion_end_frame"]
+            df.at[row_index, "alignment_allowed_obs_start_frame_ranges_json"] = json.dumps(
+                entry["allowed_obs_start_frame_ranges"],
+                ensure_ascii=False,
+            )
+            df.at[row_index, "alignment_semantic_index"] = entry["semantic_index"]
+            df.at[row_index, "alignment_paraphrase_index"] = entry["paraphrase_index"]
+        df.to_parquet(path)
 
 
 def print_episode_summary(
