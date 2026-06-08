@@ -36,11 +36,9 @@ DEFAULT_PROFILE = "upper_body_v1"
 DEFAULT_RETURN_MQTT = False
 DEFAULT_FILTER_ALPHA = 0.35
 DEFAULT_USE_FILTER = True
-DEFAULT_MQTT_SOURCE = "lerobot_smolvla_service"
 OBS_STATE = "observation.state"
 OBS_CONTEXT_IMAGE = "observation.images.context"
 ACTION = "action"
-PROTOCOL_VERSION = "miniwalle.atomic_motion.v1"
 EPSILON = 1e-6
 DEFAULT_MIN_JOINT_DELTA = 10.0
 DEFAULT_VELOCITY_DELTA = 80.0
@@ -277,7 +275,6 @@ class MiniWalleActionChunkService:
             response["frames"] = motion
             response["mqtt_payload"] = build_motion_payload(
                 motion,
-                source=str(payload.get("mqtt_source") or DEFAULT_MQTT_SOURCE),
                 dense=parse_bool(payload.get("dense_mqtt", False)),
             )
         total_ms = (time.perf_counter() - request_started_at) * 1000.0
@@ -650,7 +647,7 @@ def clamp_joint(name: str, value: float) -> float:
     return max(float(spec["min"]), min(float(spec["max"]), float(value)))
 
 
-def build_motion_payload(motion: dict[str, Any], *, source: str, dense: bool = False) -> dict[str, Any]:
+def build_motion_payload(motion: dict[str, Any], *, dense: bool = False) -> dict[str, Any]:
     frames = motion.get("frames")
     if not isinstance(frames, list) or not frames:
         raise ValueError("motion must contain non-empty frames")
@@ -661,21 +658,6 @@ def build_motion_payload(motion: dict[str, Any], *, source: str, dense: bool = F
         "type": "multimodal_action",
         "command": "motor_control",
         "payload": groups,
-        "meta": {
-            "schema_version": PROTOCOL_VERSION,
-            "source": source,
-            "mode": "frame_motion_dense" if dense else "frame_motion",
-            "motion_id": motion.get("motion_id"),
-            "fps": motion.get("fps"),
-            "duration": motion.get("duration"),
-            "source_duration": motion.get("source_duration"),
-            "source_frame_count": len(frames),
-            "group_count": len(groups),
-            "compaction": {
-                "type": "none_dense_frame_stream" if dense else "velocity_redundancy_compaction",
-                "source": "lerobot.vla_wa.scripts.serve_miniwalle_action_chunk",
-            },
-        },
     }
 
 

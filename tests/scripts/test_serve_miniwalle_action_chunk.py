@@ -134,16 +134,16 @@ class MiniWalleActionChunkServiceTest(unittest.TestCase):
             use_filter=True,
             motion_id="unit_motion",
         )
-        mqtt_payload = build_motion_payload(motion, source="unit_test")
+        mqtt_payload = build_motion_payload(motion)
 
         self.assertEqual(motion["motion_id"], "unit_motion")
         self.assertEqual(len(motion["frames"]), 2)
         self.assertEqual(motion["frames"][0]["source"]["filter"]["type"], "ema_speed_limit")
         self.assertEqual(mqtt_payload["type"], "multimodal_action")
         self.assertEqual(mqtt_payload["command"], "motor_control")
-        self.assertEqual(mqtt_payload["meta"]["source"], "unit_test")
-        self.assertEqual(mqtt_payload["meta"]["motion_id"], "unit_motion")
         self.assertTrue(mqtt_payload["payload"])
+        self.assertNotIn("meta", mqtt_payload)
+        self.assertNotIn("metadata", mqtt_payload)
 
     def test_black_context_image_is_float_tensor_when_torch_is_available(self) -> None:
         try:

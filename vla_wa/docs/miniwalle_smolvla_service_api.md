@@ -129,7 +129,6 @@ motion_id       可选；不传则服务自动生成
 filter_alpha    默认 0.35；EMA 滤波强度
 use_filter      默认 true；false 时只做关节限位，不做 EMA/速度限制
 dense_mqtt      默认 false；true 时保留逐帧 timing，不做冗余压缩
-mqtt_source     默认 lerobot_smolvla_service；写入 mqtt_payload.meta.source
 seed            可选；设置推理随机种子
 ```
 
@@ -148,18 +147,13 @@ seed            可选；设置推理随机种子
         {"duration_ms": 1, "angle": 12.3, "type": "head", "direction": "yaw"}
       ]
     }
-  ],
-  "meta": {
-    "schema_version": "miniwalle.atomic_motion.v1",
-    "source": "lerobot_smolvla_service",
-    "mode": "frame_motion",
-    "motion_id": "hello_wave_001"
-  }
+  ]
 }
 ```
 
 注意：
 
 - `current_joints` 必须包含 `/metadata` 里的全部 `state_names`，单位是度。
+- `mqtt_payload` 按 cloud-server 最终下发格式只包含 `trace`、`type`、`command`、`payload`，不包含 `meta` 或 `metadata`。
 - HTTP 服务只返回 JSON，不直接发布 MQTT；调用方把 `mqtt_payload` 交给现有 MQTT 发布逻辑即可。
 - 如果同事从另一台机器访问，把 `127.0.0.1` 换成这台服务器的内网 IP，端口仍是 `8782`。
